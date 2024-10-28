@@ -5,3 +5,5 @@ __pycache__
 *.pt
 *.pkl
 *.egg-info
+
+.idea/
