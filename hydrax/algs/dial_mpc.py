@@ -2,7 +2,6 @@ from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-# from jax_cosmo.scipy.interpolate import InterpolatedUnivariateSpline
 from flax.struct import dataclass
 
 from hydrax.alg_base import SamplingBasedController, Trajectory
@@ -11,7 +10,7 @@ from hydrax.task_base import Task
 
 
 @dataclass
-class MPPIParams:
+class DialMPCParams:
     """Policy parameters for model-predictive path integral control.
 
     Attributes:
@@ -23,13 +22,10 @@ class MPPIParams:
     rng: jax.Array
 
 
-class MPPI(SamplingBasedController):
-    """Model-predictive path integral control.
+class DialMPC(SamplingBasedController):
+    """Dial MPC.
 
-    Implements "MPPI-generic" as described in https://arxiv.org/abs/2409.07563.
-    Unlike the original MPPI derivation, this does not assume stochastic,
-    control-affine dynamics or a separable cost function that is quadratic in
-    control.
+    Implements https://arxiv.org/abs/2409.15610.
     """
 
     def __init__(
@@ -38,6 +34,8 @@ class MPPI(SamplingBasedController):
         num_samples: int,
         noise_level: float,
         temperature: float,
+        inner_loop_iterations: int,
+        planning_horizon: int,
         num_randomizations: int = 1,
         risk_strategy: RiskStrategy = None,
         seed: int = 0,
@@ -59,16 +57,18 @@ class MPPI(SamplingBasedController):
         self.noise_level = noise_level
         self.num_samples = num_samples
         self.temperature = temperature
+        self.inner_loop_iterations = inner_loop_iterations
+        self.planning_horizon = planning_horizon
 
-    def init_params(self, seed: int = 0) -> MPPIParams:
+    def init_params(self, seed: int = 0) -> DialMPCParams:
         """Initialize the policy parameters."""
         rng = jax.random.key(seed)
         mean = jnp.zeros((self.task.planning_horizon - 1, self.task.model.nu))
-        return MPPIParams(mean=mean, rng=rng)
+        return DialMPCParams(mean=mean, rng=rng)
 
     def sample_controls(
-        self, params: MPPIParams
-    ) -> Tuple[jax.Array, MPPIParams]:
+        self, params: DialMPCParams, trajectory: Trajectory, inner_iter: int,
+    ) -> Tuple[jax.Array, DialMPCParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(
@@ -79,12 +79,26 @@ class MPPI(SamplingBasedController):
                 self.task.model.nu,
             ),
         )
+        # Get the covariance, vectorized over the horizon and samples
+        cov = self.get_covariance(inner_iter)
         controls = params.mean + self.noise_level * noise
         return controls, params.replace(rng=rng)
 
+    def get_covariance(self, shape: Tuple, inner_iter: int) -> jax.Array:
+        """
+        Get the covariance defined by the annealing strategy.
+        Returns an array of the specified shape. The array is assumed to be of shape: sample x horizon x inputs.
+        The covariance is constant across samples and inputs.
+        """
+        # Return a 1D array of length horizon
+        cov = jnp.array(self.planning_horizon)
+        for c in cov:
+            c = jnp.exp(-((self.inner_loop_iterations - inner_iter)/(self.beta1 * self.inner_loop_iterations))
+                        -(self.planning_horizon - i)/(self.beta2*self.planning_horizon))
+
     def update_params(
-        self, params: MPPIParams, rollouts: Trajectory
-    ) -> MPPIParams:
+        self, params: DialMPCParams, rollouts: Trajectory
+    ) -> DialMPCParams:
         """Update the mean with an exponentially weighted average."""
         costs = jnp.sum(rollouts.costs, axis=1)  # sum over time steps
         # N.B. jax.nn.softmax takes care of details like baseline subtraction.
@@ -92,15 +106,15 @@ class MPPI(SamplingBasedController):
         mean = jnp.sum(weights[:, None, None] * rollouts.controls, axis=0)
         return params.replace(mean=mean)
 
-    def get_action(self, params: MPPIParams, t: float) -> jax.Array:
+    def get_action(self, params: DialMPCParams, t: float) -> jax.Array:
         """Get the control action for the current time step."""
         # TODO: Add in more interpolation options
         # Linear
-        times = jnp.arange(0, self.task.dt*(self.task.planning_horizon-1), self.task.dt)
-        mean_interp = jax.vmap(lambda y_dim: jnp.interp(t, times, y_dim))(params.mean.T)
-
-        return mean_interp.T
+        # times = jnp.arange(0, self.task.dt*(self.task.planning_horizon-1), self.task.dt)
+        # mean_interp = jax.vmap(lambda y_dim: jnp.interp(t, times, y_dim))(params.mean.T)
+        #
+        # return mean_interp.T
         # ZOH
-        # idx_float = t / self.task.dt  # zero order hold
-        # idx = jnp.floor(idx_float).astype(jnp.int32)
-        # return params.mean[idx]
+        idx_float = t / self.task.dt  # zero order hold
+        idx = jnp.floor(idx_float).astype(jnp.int32)
+        return params.mean[idx]

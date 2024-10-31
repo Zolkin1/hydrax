@@ -1,0 +1,22 @@
+ctrl_params:
+  ctrl_freq: 30
+  planning_horizon: 10 #20 #4 #20
+  sim_steps_per_control: 4 #4 #2 #20 #4
+  target_vel: 0.0
+  num_elite: 5
+  temperature: 0.1
+  noise_level: 0.2
+sample_params:
+  num_samples: 4096 #1024
+weights:
+  orientation_tracking: 1 #0.5
+  velocity_tracking: 1 #10
+  height_tracking: 1 #10 #0.1
+  control_cost: 0.01
+  gait_tracking: 1000
+gait:
+  swing_time: 1 #0.3
+  apex_height: 0.2
+  apex_time: 0.75
+  ground_height: 0.02 #0.01
+  start_time: 0.0

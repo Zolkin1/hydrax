@@ -6,6 +6,7 @@ import numpy as np
 from hydrax import ROOT
 from hydrax.algs import MPPI, PredictiveSampling, CEM
 from hydrax.mpc import run_interactive
+from hydrax.tasks.humanoid_walking import HumanoidWalking
 from hydrax.tasks.humanoid import Humanoid
 
 """
@@ -13,7 +14,8 @@ Run an interactive simulation of the humanoid task.
 """
 
 # Define the task (cost and dynamics)
-task = Humanoid()
+# task = Humanoid()
+task = HumanoidWalking()
 
 # Set up the controller
 # Set the controller based on command-line arguments
@@ -31,7 +33,10 @@ else:
     sys.exit(1)
 
 # Define the model used for simulation
-mj_model = mujoco.MjModel.from_xml_path(ROOT + "/models/g1/scene.xml")
+mj_model = mujoco.MjModel.from_xml_path(ROOT + "/models/g1/basic_scene.xml")
+
+# TODO: Go back to this model when I know why its slower
+# mj_model = mujoco.MjModel.from_xml_path(ROOT + "/models/g1/g1_small_minimal_contacts.xml")
 start_state = np.concatenate(
     [mj_model.keyframe("stand").qpos, np.zeros(mj_model.nv)]
 )

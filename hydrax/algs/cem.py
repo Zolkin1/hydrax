@@ -97,7 +97,14 @@ class CEM(SamplingBasedController):
         return params.replace(mean=mean, cov=cov)
 
     def get_action(self, params: CEMParams, t: float) -> jax.Array:
-        """Get the control action for the current time step, zero order hold."""
-        idx_float = t / self.task.dt  # zero order hold
-        idx = jnp.floor(idx_float).astype(jnp.int32)
-        return params.mean[idx]
+        """Get the control action for the current time step."""
+        # TODO: Add more interpolation options
+        # Linear
+        times = jnp.arange(0, self.task.dt*(self.task.planning_horizon-1), self.task.dt)
+        mean_interp = jax.vmap(lambda y_dim: jnp.interp(t, times, y_dim))(params.mean.T)
+        return mean_interp.T
+
+        # ZOH
+        # idx_float = t / self.task.dt  # zero order hold
+        # idx = jnp.floor(idx_float).astype(jnp.int32)
+        # return params.mean[idx]
