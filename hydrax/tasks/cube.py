@@ -18,7 +18,7 @@ class CubeRotation(Task):
 
         super().__init__(
             mj_model,
-            planning_horizon=4,
+            planning_horizon=3,
             sim_steps_per_control_step=4,
             trace_sites=["cube_center", "if_tip", "mf_tip", "rf_tip", "th_tip"],
         )
@@ -83,3 +83,12 @@ class CubeRotation(Task):
         """Randomly shift the measured configurations."""
         shift = 0.005 * jax.random.normal(rng, (self.model.nq,))
         return {"qpos": data.qpos + shift}
+
+    def get_obs(self, state: mjx.Data) -> jax.Array:
+        """Observe the hand position, cube pose relative to target, and vels."""
+        hand_qpos = state.qpos[7:]
+        cube_position_err = self._get_cube_position_err(state)
+        cube_orientation_err = self._get_cube_orientation_err(state)
+        return jnp.concatenate(
+            [cube_position_err, cube_orientation_err, hand_qpos, state.qvel]
+        )
