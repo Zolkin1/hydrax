@@ -39,6 +39,7 @@ class CEM(SamplingBasedController):
         plan_horizon: float = 1.0,
         spline_type: Literal["zero", "linear", "cubic"] = "zero",
         num_knots: int = 4,
+        iterations: int = 1,
     ) -> None:
         """Initialize the controller.
 
@@ -65,6 +66,7 @@ class CEM(SamplingBasedController):
             plan_horizon=plan_horizon,
             spline_type=spline_type,
             num_knots=num_knots,
+            iterations=iterations,
         )
         self.num_samples = num_samples
         self.sigma_min = sigma_min
@@ -79,7 +81,7 @@ class CEM(SamplingBasedController):
             tk=_params.tk, mean=_params.mean, cov=cov, rng=_params.rng
         )
 
-    def sample_knots(self, params: CEMParams) -> Tuple[jax.Array, CEMParams]:
+    def sample_knots(self, params: CEMParams, iteration: int = 0) -> Tuple[jax.Array, CEMParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(

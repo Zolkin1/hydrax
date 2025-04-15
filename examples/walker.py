@@ -2,7 +2,7 @@ import argparse
 
 import mujoco
 
-from hydrax.algs import MPPI, PredictiveSampling
+from hydrax.algs import MPPI, PredictiveSampling, DIAL
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.walker import Walker
 
@@ -22,6 +22,7 @@ subparsers = parser.add_subparsers(
 )
 subparsers.add_parser("ps", help="Predictive Sampling")
 subparsers.add_parser("mppi", help="Model Predictive Path Integral Control")
+subparsers.add_parser("dial", help="DIAL-MPC")
 args = parser.parse_args()
 
 # Set the controller based on command-line arguments
@@ -40,11 +41,22 @@ elif args.algorithm == "mppi":
     ctrl = MPPI(
         task,
         num_samples=128,
-        noise_level=0.5,
+        noise_level=0.1,#0.5,
         temperature=0.1,
         plan_horizon=0.6,
         spline_type="zero",
         num_knots=5,
+    )
+elif args.algorithm == "dial":
+    print("Running dial")
+    ctrl = DIAL(
+        task,
+        num_samples=128,
+        temperature=0.1,
+        plan_horizon=0.6,
+        spline_type="zero",
+        num_knots=5,
+        iterations=3,
     )
 else:
     parser.error("Invalid algorithm")

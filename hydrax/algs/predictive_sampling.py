@@ -36,6 +36,7 @@ class PredictiveSampling(SamplingBasedController):
         plan_horizon: float = 1.0,
         spline_type: Literal["zero", "linear", "cubic"] = "zero",
         num_knots: int = 4,
+        iterations: int = 1,
     ) -> None:
         """Initialize the controller.
 
@@ -60,6 +61,7 @@ class PredictiveSampling(SamplingBasedController):
             plan_horizon=plan_horizon,
             spline_type=spline_type,
             num_knots=num_knots,
+            iterations=iterations,
         )
         self.noise_level = noise_level
         self.num_samples = num_samples
@@ -69,7 +71,7 @@ class PredictiveSampling(SamplingBasedController):
         _params = super().init_params(seed)
         return PSParams(tk=_params.tk, mean=_params.mean, rng=_params.rng)
 
-    def sample_knots(self, params: PSParams) -> Tuple[jax.Array, PSParams]:
+    def sample_knots(self, params: PSParams, iteration: int = 0) -> Tuple[jax.Array, PSParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(

@@ -1,4 +1,4 @@
-from typing import Literal, Tuple
+from typing import Literal, Tuple, Callable
 
 import jax
 import jax.numpy as jnp
@@ -10,8 +10,8 @@ from hydrax.task_base import Task
 
 
 @dataclass
-class MPPIParams(SamplingParams):
-    """Policy parameters for model-predictive path integral control.
+class DIALParams(SamplingParams):
+    """Policy parameters for DIAL-MPC.
 
     Same as SamplingParams, but with a different name for clarity.
 
@@ -19,23 +19,27 @@ class MPPIParams(SamplingParams):
         tk: The knot times of the control spline.
         mean: The mean of the control spline knot distribution, μ = [u₀, ...].
         rng: The pseudo-random number generator key.
+        # horizon_noise_sched: function defining the noise along the horizon. The function takes in the index along the
+        #     horizon and the horizon length and outputs the noise.
+        # iteration_noise_sched: function defining the noise along the iteration. The function takes in the iteration
+        #     index and iteration length and outputs the noise.
     """
 
+    # horizon_noise_sched: Callable[[int], jax.Array]
+    # iteration_noise_sched: Callable[[int], jax.Array]
 
-class MPPI(SamplingBasedController):
-    """Model-predictive path integral control.
+    beta_h: float
+    beta_i: float
 
-    Implements "MPPI-generic" as described in https://arxiv.org/abs/2409.07563.
-    Unlike the original MPPI derivation, this does not assume stochastic,
-    control-affine dynamics or a separable cost function that is quadratic in
-    control.
+class DIAL(SamplingBasedController):
+    """DIAL MPC.
+    Implements the DIAL-MPC algorithm given in https://arxiv.org/abs/2409.15610
     """
 
     def __init__(
         self,
         task: Task,
         num_samples: int,
-        noise_level: float,
         temperature: float,
         num_randomizations: int = 1,
         risk_strategy: RiskStrategy = None,
@@ -44,6 +48,8 @@ class MPPI(SamplingBasedController):
         spline_type: Literal["zero", "linear", "cubic"] = "zero",
         num_knots: int = 4,
         iterations: int = 1,
+        beta_h: float = 0.9,
+        beta_i: float = 0.5,
     ) -> None:
         """Initialize the controller.
 
@@ -72,16 +78,18 @@ class MPPI(SamplingBasedController):
             num_knots=num_knots,
             iterations=iterations,
         )
-        self.noise_level = noise_level
         self.num_samples = num_samples
         self.temperature = temperature
+        self.beta_h = beta_h
+        self.beta_i = beta_i
 
-    def init_params(self, seed: int = 0) -> MPPIParams:
+    def init_params(self, seed: int = 0) -> DIALParams:
         """Initialize the policy parameters."""
         _params = super().init_params(seed)
-        return MPPIParams(tk=_params.tk, mean=_params.mean, rng=_params.rng)
 
-    def sample_knots(self, params: MPPIParams, iteration: int = 0) -> Tuple[jax.Array, MPPIParams]:
+        return DIALParams(tk=_params.tk, mean=_params.mean, rng=_params.rng, beta_h=self.beta_h, beta_i=self.beta_i)
+
+    def sample_knots(self, params: DIALParams, iteration: int = 0) -> Tuple[jax.Array, DIALParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(
@@ -92,15 +100,34 @@ class MPPI(SamplingBasedController):
                 self.task.model.nu,
             ),
         )
-        controls = params.mean + self.noise_level * noise
+
+        # Compute the noise level
+        horizon_noise = self.default_horizon_noise(params.beta_h, self.num_knots)          # Horizon is the length of the knots
+        iteration_noise = self.default_iteration_noise(params.beta_i, self.iterations)     # Noise over the iterations
+
+        # Combine the noise
+        noise_level = iteration_noise[iteration] * horizon_noise
+        noise_level = noise_level.reshape(-1, 1)
+
+        controls = params.mean + noise_level * noise
         return controls, params.replace(rng=rng)
 
     def update_params(
-        self, params: MPPIParams, rollouts: Trajectory
-    ) -> MPPIParams:
+        self, params: DIALParams, rollouts: Trajectory
+    ) -> DIALParams:
         """Update the mean with an exponentially weighted average."""
         costs = jnp.sum(rollouts.costs, axis=1)  # sum over time steps
         # N.B. jax.nn.softmax takes care of details like baseline subtraction.
         weights = jax.nn.softmax(-costs / self.temperature, axis=0)
         mean = jnp.sum(weights[:, None, None] * rollouts.knots, axis=0)
         return params.replace(mean=mean)
+
+    def default_horizon_noise(self, beta_h: float, H: int) -> jax.Array:
+        du = len(self.task.u_max)
+        horizon_idx = jnp.arange(0, H)
+        return jnp.exp(-((H - horizon_idx)/(beta_h * H))*du)
+
+    def default_iteration_noise(self, beta_i: float, N: int) -> jax.Array:
+        du = len(self.task.u_max)
+        iteration_idx = jnp.arange(0, N)
+        return jnp.exp(-((N - iteration_idx)/(beta_i * N))*du)

@@ -3,7 +3,7 @@ import argparse
 import evosax
 import mujoco
 
-from hydrax.algs import CEM, MPPI, Evosax, PredictiveSampling
+from hydrax.algs import CEM, MPPI, Evosax, PredictiveSampling, DIAL
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.cube import CubeRotation
 
@@ -28,6 +28,7 @@ subparsers.add_parser("ps", help="Predictive Sampling")
 subparsers.add_parser("mppi", help="Model Predictive Path Integral Control")
 subparsers.add_parser("cem", help="Cross-Entropy Method")
 subparsers.add_parser("cmaes", help="CMA-ES")
+subparsers.add_parser("dial", help="DIAL-MPC")
 args = parser.parse_args()
 
 # Set the controller based on command-line arguments
@@ -66,6 +67,7 @@ elif args.algorithm == "cem":
         plan_horizon=0.25,
         spline_type="zero",
         num_knots=4,
+        iterations=3,
     )
 elif args.algorithm == "cmaes":
     print("Running CMA-ES")
@@ -78,6 +80,20 @@ elif args.algorithm == "cmaes":
         plan_horizon=0.25,
         spline_type="zero",
         num_knots=4,
+    )
+elif args.algorithm == "dial":
+    print("Running DIAL-MPC")
+    ctrl = DIAL(
+        task,
+        num_samples=128,
+        temperature=0.001,
+        # num_randomizations=8,
+        plan_horizon=0.25,
+        spline_type="zero",
+        num_knots=4,
+        iterations=3,
+        beta_h=0.1,
+        beta_i=0.05,
     )
 else:
     parser.error("Invalid algorithm")
@@ -93,7 +109,7 @@ run_interactive(
     mj_data,
     frequency=25,
     fixed_camera_id=None,
-    show_traces=False,
+    show_traces= True, #False,
     max_traces=1,
     trace_color=[1.0, 1.0, 1.0, 1.0],
 )
