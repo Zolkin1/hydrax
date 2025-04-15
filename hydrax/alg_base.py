@@ -50,6 +50,7 @@ class SamplingParams:
     mean: jax.Array
     rng: jax.Array
 
+
 class SamplingBasedController(ABC):
     """An abstract sampling-based MPC algorithm interface."""
 
@@ -164,7 +165,9 @@ class SamplingBasedController(ABC):
 
         params, rollouts = _optimize_loop_body(0, (params, None))
 
-        params, rollouts = jax.lax.fori_loop(1, self.iterations, _optimize_loop_body, (params, rollouts))
+        params, rollouts = jax.lax.fori_loop(
+            1, self.iterations, _optimize_loop_body, (params, rollouts)
+        )
 
         return params, rollouts
 
@@ -282,7 +285,9 @@ class SamplingBasedController(ABC):
         return SamplingParams(tk=tk, mean=mean, rng=rng)
 
     @abstractmethod
-    def sample_knots(self, params: Any, iteration: int = 0) -> Tuple[jax.Array, Any]:
+    def sample_knots(
+        self, params: Any, iteration: int = 0
+    ) -> Tuple[jax.Array, Any]:
         """Sample a set of control spline knots U ~ π(params).
 
         Args:

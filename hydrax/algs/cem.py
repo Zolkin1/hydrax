@@ -81,7 +81,9 @@ class CEM(SamplingBasedController):
             tk=_params.tk, mean=_params.mean, cov=cov, rng=_params.rng
         )
 
-    def sample_knots(self, params: CEMParams, iteration: int = 0) -> Tuple[jax.Array, CEMParams]:
+    def sample_knots(
+        self, params: CEMParams, iteration: int = 0
+    ) -> Tuple[jax.Array, CEMParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(

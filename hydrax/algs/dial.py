@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, Callable
+from typing import Literal, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -30,6 +30,7 @@ class DIALParams(SamplingParams):
 
     beta_h: float
     beta_i: float
+
 
 class DIAL(SamplingBasedController):
     """DIAL MPC.
@@ -87,9 +88,17 @@ class DIAL(SamplingBasedController):
         """Initialize the policy parameters."""
         _params = super().init_params(seed)
 
-        return DIALParams(tk=_params.tk, mean=_params.mean, rng=_params.rng, beta_h=self.beta_h, beta_i=self.beta_i)
+        return DIALParams(
+            tk=_params.tk,
+            mean=_params.mean,
+            rng=_params.rng,
+            beta_h=self.beta_h,
+            beta_i=self.beta_i,
+        )
 
-    def sample_knots(self, params: DIALParams, iteration: int = 0) -> Tuple[jax.Array, DIALParams]:
+    def sample_knots(
+        self, params: DIALParams, iteration: int = 0
+    ) -> Tuple[jax.Array, DIALParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(
@@ -102,8 +111,12 @@ class DIAL(SamplingBasedController):
         )
 
         # Compute the noise level
-        horizon_noise = self.default_horizon_noise(params.beta_h, self.num_knots)          # Horizon is the length of the knots
-        iteration_noise = self.default_iteration_noise(params.beta_i, self.iterations)     # Noise over the iterations
+        horizon_noise = self.default_horizon_noise(
+            params.beta_h, self.num_knots
+        )  # Horizon is the length of the knots
+        iteration_noise = self.default_iteration_noise(
+            params.beta_i, self.iterations
+        )  # Noise over the iterations
 
         # Combine the noise
         noise_level = iteration_noise[iteration] * horizon_noise
@@ -125,9 +138,9 @@ class DIAL(SamplingBasedController):
     def default_horizon_noise(self, beta_h: float, H: int) -> jax.Array:
         du = len(self.task.u_max)
         horizon_idx = jnp.arange(0, H)
-        return jnp.exp(-((H - horizon_idx)/(beta_h * H))*du)
+        return jnp.exp(-((H - horizon_idx) / (beta_h * H)) * du)
 
     def default_iteration_noise(self, beta_i: float, N: int) -> jax.Array:
         du = len(self.task.u_max)
         iteration_idx = jnp.arange(0, N)
-        return jnp.exp(-((N - iteration_idx)/(beta_i * N))*du)
+        return jnp.exp(-((N - iteration_idx) / (beta_i * N)) * du)

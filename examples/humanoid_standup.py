@@ -39,7 +39,7 @@ if __name__ == "__main__":
         plan_horizon=0.6,
         spline_type="zero",
         num_knots=4,
-        iterations=1
+        iterations=1,
     )
 
     # Define the model used for simulation (stiffer contact parameters)

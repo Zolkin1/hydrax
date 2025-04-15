@@ -81,7 +81,9 @@ class MPPI(SamplingBasedController):
         _params = super().init_params(seed)
         return MPPIParams(tk=_params.tk, mean=_params.mean, rng=_params.rng)
 
-    def sample_knots(self, params: MPPIParams, iteration: int = 0) -> Tuple[jax.Array, MPPIParams]:
+    def sample_knots(
+        self, params: MPPIParams, iteration: int = 0
+    ) -> Tuple[jax.Array, MPPIParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(

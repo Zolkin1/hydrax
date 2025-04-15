@@ -2,7 +2,7 @@ import argparse
 
 import mujoco
 
-from hydrax.algs import MPPI, PredictiveSampling, DIAL
+from hydrax.algs import DIAL, MPPI, PredictiveSampling
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.walker import Walker
 
@@ -41,7 +41,7 @@ elif args.algorithm == "mppi":
     ctrl = MPPI(
         task,
         num_samples=128,
-        noise_level=0.1,#0.5,
+        noise_level=0.1,  # 0.5,
         temperature=0.1,
         plan_horizon=0.6,
         spline_type="zero",

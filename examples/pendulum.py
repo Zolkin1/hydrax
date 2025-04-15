@@ -3,7 +3,7 @@ import argparse
 import mujoco
 import numpy as np
 
-from hydrax.algs import MPPI, PredictiveSampling, DIAL
+from hydrax.algs import DIAL, MPPI, PredictiveSampling
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.pendulum import Pendulum
 

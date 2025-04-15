@@ -3,7 +3,7 @@ import argparse
 import evosax
 import mujoco
 
-from hydrax.algs import CEM, MPPI, Evosax, PredictiveSampling, DIAL
+from hydrax.algs import CEM, DIAL, MPPI, Evosax, PredictiveSampling
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.cube import CubeRotation
 
@@ -109,7 +109,7 @@ run_interactive(
     mj_data,
     frequency=25,
     fixed_camera_id=None,
-    show_traces= True, #False,
+    show_traces=True,  # False,
     max_traces=1,
     trace_color=[1.0, 1.0, 1.0, 1.0],
 )
