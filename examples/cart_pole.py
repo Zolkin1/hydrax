@@ -2,7 +2,7 @@ import argparse
 
 import mujoco
 
-from hydrax.algs import CEM, MPPI, PredictiveSampling
+from hydrax.algs import CEM, MPPI, PredictiveSampling, DIAL
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.cart_pole import CartPole
 
@@ -23,6 +23,7 @@ subparsers = parser.add_subparsers(
 subparsers.add_parser("ps", help="Predictive Sampling")
 subparsers.add_parser("mppi", help="Model Predictive Path Integral Control")
 subparsers.add_parser("cem", help="Cross-Entropy Method")
+subparsers.add_parser("dial", help="DIAL-MPC")
 args = parser.parse_args()
 
 # Set up the controller
@@ -59,6 +60,19 @@ elif args.algorithm == "cem":
         plan_horizon=1.0,
         num_knots=4,
     )
+elif args.algorithm == "dial":
+    print("Running DIAL-MPC")
+    ctrl = DIAL(
+        task,
+        num_samples=128,
+        temperature=0.5,
+        spline_type="zero",
+        plan_horizon=1.0,
+        num_knots=4,
+        iterations=2,
+        beta_h=0.9,
+        beta_i=0.5,
+    )
 else:
     parser.error("Other algorithms not implemented for this example!")
 
@@ -73,6 +87,6 @@ run_interactive(
     mj_data,
     frequency=50,
     fixed_camera_id=0,
-    show_traces=False,
+    show_traces=True,
     max_traces=1,
 )

@@ -85,15 +85,15 @@ elif args.algorithm == "dial":
     print("Running DIAL-MPC")
     ctrl = DIAL(
         task,
-        num_samples=128,
+        num_samples=1024, #128,
         temperature=0.001,
         # num_randomizations=8,
         plan_horizon=0.25,
         spline_type="zero",
         num_knots=4,
-        iterations=3,
-        beta_h=0.1,
-        beta_i=0.05,
+        iterations=1,
+        beta_h=4.5,
+        beta_i=5.5,
     )
 else:
     parser.error("Invalid algorithm")

@@ -119,6 +119,10 @@ class DIAL(SamplingBasedController):
         )  # Noise over the iterations
 
         # Combine the noise
+        # jax.debug.print("horizon noise: {}", horizon_noise)
+        # jax.debug.print("iteration noise: {}", iteration_noise[iteration])
+        # jax.debug.print("dial noise: {}", iteration_noise[iteration] * horizon_noise)
+        # noise_level = jnp.ones((self.num_knots, 1))*0.2
         noise_level = iteration_noise[iteration] * horizon_noise
         noise_level = noise_level.reshape(-1, 1)
 
@@ -133,6 +137,7 @@ class DIAL(SamplingBasedController):
         # N.B. jax.nn.softmax takes care of details like baseline subtraction.
         weights = jax.nn.softmax(-costs / self.temperature, axis=0)
         mean = jnp.sum(weights[:, None, None] * rollouts.knots, axis=0)
+        # mean = jnp.roll(mean, 1)
         return params.replace(mean=mean)
 
     def default_horizon_noise(self, beta_h: float, H: int) -> jax.Array:
@@ -142,5 +147,5 @@ class DIAL(SamplingBasedController):
 
     def default_iteration_noise(self, beta_i: float, N: int) -> jax.Array:
         du = len(self.task.u_max)
-        iteration_idx = jnp.arange(0, N)
+        iteration_idx = jnp.arange(1, N + 1)
         return jnp.exp(-((N - iteration_idx) / (beta_i * N)) * du)
