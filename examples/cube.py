@@ -85,7 +85,7 @@ elif args.algorithm == "dial":
     print("Running DIAL-MPC")
     ctrl = DIAL(
         task,
-        num_samples=1024, #128,
+        num_samples=1024,  # 128,
         temperature=0.001,
         # num_randomizations=8,
         plan_horizon=0.25,

@@ -2,7 +2,7 @@ import argparse
 
 import mujoco
 
-from hydrax.algs import CEM, MPPI, PredictiveSampling, DIAL
+from hydrax.algs import CEM, DIAL, MPPI, PredictiveSampling
 from hydrax.simulation.deterministic import run_interactive
 from hydrax.tasks.cart_pole import CartPole
 
