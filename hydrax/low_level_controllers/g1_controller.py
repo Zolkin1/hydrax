@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
 from mujoco import mjx
@@ -60,9 +62,7 @@ class G1Controller(RLController):
             20: 11,  # right_ankle_roll
         }
 
-        self.action_isaac = jnp.zeros(self.action_size)
-
-    def create_obs(self, data: mjx.Data, input: jax.Array) -> jax.Array:
+    def create_obs(self, data: mjx.Data, input: jax.Array, prev_action: jax.Array) -> jax.Array:
         """Convert mujoco data to the observation"""
         body_ang_vel = data.qvel[3:6]
         des_vel = input
@@ -78,7 +78,7 @@ class G1Controller(RLController):
                 jnp.array([des_vel[2] * self.cmd_scale[2]]),
                 self.convert_to_isaac(qj),
                 self.convert_to_isaac(data.qvel[6:]) * self.qvel_scale,
-                self.action_isaac,
+                prev_action,
                 jnp.array([jnp.sin(2 * jnp.pi * data.time / self.period)]),
                 jnp.array([jnp.cos(2 * jnp.pi * data.time / self.period)]),
             ]
@@ -105,14 +105,21 @@ class G1Controller(RLController):
 
         return obs
 
-    def create_action(self, obs: jax.Array) -> jax.Array:
+    def create_action(self, obs: jax.Array) -> Tuple[jax.Array, jax.Array]:
         """Get action from RL Policy"""
-        self.action_isaac = self.model(obs)
+        action_isaac = self.model(obs)
 
         return (
-            self.convert_to_mujoco(self.action_isaac) * self.action_scale
-            + self.default_angles
-        )
+            self.convert_to_mujoco(action_isaac) * self.action_scale
+            + self.default_angles, action_isaac)
+
+    def compute_control(
+        self, state: mjx.Data, u_high_level: jax.Array, data: jax.Array,) -> Tuple[jax.Array, jax.Array]:
+        """Compute the observation then the action"""
+        obs = self.create_obs(state, u_high_level, data)
+        action, action_isaac = self.create_action(obs)
+
+        return action, action_isaac
 
     def compute_pg(self, data: mjx.Data) -> jax.Array:
         """Compute the projected gravity"""

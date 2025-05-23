@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import jax.numpy as jnp
 import jax.random
@@ -88,11 +88,11 @@ class RLController(LowLevelController):
         obs_size,
         action_size,
     ):
+        super().__init__(action_size)
         """Initialize the RL controller"""
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
         self.obs_size = obs_size
-        self.action_size = action_size
 
         self.model = Policy(
             obs_size=obs_size,
@@ -107,9 +107,15 @@ class RLController(LowLevelController):
         load_pytorch_weights(self.model.actor, np_weights, prefix="actor")
 
     @abstractmethod
-    def create_obs(self, data: mjx.Data, input: jax.Array) -> jax.Array:
+    def create_obs(self, data: mjx.Data, input: jax.Array, prev_action: jax.Array) -> jax.Array:
         """Create the observation from the mujoco data"""
 
     @abstractmethod
-    def create_action(self, obs: jax.Array) -> jax.Array:
+    def create_action(self, obs: jax.Array) -> Tuple[jax.Array, jax.Array]:
         """Create the action from the output of the network"""
+
+    @abstractmethod
+    def compute_control(
+        self, state: mjx.Data, u_high_level: jax.Array, data: jax.Array
+    ) -> Tuple[jax.Array, jax.Array]:
+        """Compute the action from the state and input"""

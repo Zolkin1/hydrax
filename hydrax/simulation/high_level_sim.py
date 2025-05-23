@@ -1,6 +1,7 @@
 import os
 import time
 from typing import Sequence
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -12,6 +13,7 @@ from mujoco import mjx
 from hydrax import ROOT
 from hydrax.low_level_controllers.rl_controller import RLController
 from hydrax.utils.video import VideoRecorder
+from hydrax.algs.high_level_control import HighLevelControl
 
 """
 Tools for deterministic (synchronous) simulation, with the simulator and
@@ -20,7 +22,7 @@ controller running one after the other in the same thread.
 
 
 def run_interactive(  # noqa: PLR0912, PLR0915
-    # controller: SamplingBasedController,
+    planner: HighLevelControl,
     mj_model: mujoco.MjModel,
     mj_data: mujoco.MjData,
     low_level_controller: RLController,
@@ -92,28 +94,38 @@ def run_interactive(  # noqa: PLR0912, PLR0915
         f"simulating at {1.0 / mj_model.opt.timestep} Hz"
     )
 
-    # Initialize the controller
+    control_steps_per_plan = sim_steps_per_replan / sim_steps_per_control
+    print(
+        f"{control_steps_per_plan} control steps per plan. "
+    )
+    # Initialize the planner
     mjx_data = mjx.put_data(mj_model, mj_data)
     mjx_data = mjx_data.replace(
         mocap_pos=mj_data.mocap_pos, mocap_quat=mj_data.mocap_quat
     )
-    # policy_params = controller.init_params(initial_knots=initial_knots)
-    # jit_optimize = jax.jit(controller.optimize)
-    # jit_interp_func = jax.jit(controller.interp_func)
+    policy_params = planner.init_params(initial_knots=initial_knots)
+    jit_optimize = jax.jit(planner.optimize)
+    jit_interp_func = jax.jit(planner.interp_func)
 
-    # Warm-up the controller
-    print("Jitting the controller...")
+    # Warm-up the planner
+    print("Jitting the planner...")
     st = time.time()
-    # policy_params, rollouts = jit_optimize(mjx_data, policy_params)
-    # policy_params, rollouts = jit_optimize(mjx_data, policy_params)
+    policy_params, rollouts = jit_optimize(mjx_data, policy_params)
+    policy_params, rollouts = jit_optimize(mjx_data, policy_params)
 
     tq = jnp.arange(0, sim_steps_per_replan) * mj_model.opt.timestep
-    # tk = policy_params.tk
-    # knots = policy_params.mean[None, ...]
-    # _ = jit_interp_func(tq, tk, knots)
-    # _ = jit_interp_func(tq, tk, knots)
-    print(f"Time to jit: {time.time() - st:.3f} seconds")
-    # num_traces = min(rollouts.controls.shape[1], max_traces)
+    tk = policy_params.tk
+    knots = policy_params.mean[None, ...]
+    _ = jit_interp_func(tq, tk, knots)
+    _ = jit_interp_func(tq, tk, knots)
+    print(f"Time to jit planner: {time.time() - st:.3f} seconds")
+    num_traces = min(rollouts.controls.shape[1], max_traces)
+
+    # Initialize the controller
+    st = time.time()
+    # compute_control_jit = jax.jit(partial(low_level_controller.compute_control))
+    print(f"Time to jit controller: {time.time() - st:.3f} seconds")
+
 
     # Ghost reference setup
     if reference is not None:
@@ -146,6 +158,8 @@ def run_interactive(  # noqa: PLR0912, PLR0915
             record_video = False
         renderer = mujoco.Renderer(mj_model, height=height, width=width)
 
+    data = jnp.zeros(low_level_controller.action_size)
+
     # Start the simulation
     with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
         if fixed_camera_id is not None:
@@ -153,27 +167,29 @@ def run_interactive(  # noqa: PLR0912, PLR0915
             viewer.cam.fixedcamid = fixed_camera_id
             viewer.cam.type = 2
 
-        # # Set up rollout traces
-        # if show_traces:
-        #     num_trace_sites = len(controller.task.trace_site_ids)
-        #     for i in range(
-        #         num_trace_sites * num_traces * controller.ctrl_steps
-        #     ):
-        #         mujoco.mjv_initGeom(
-        #             viewer.user_scn.geoms[i],
-        #             type=mujoco.mjtGeom.mjGEOM_LINE,
-        #             size=np.zeros(3),
-        #             pos=np.zeros(3),
-        #             mat=np.eye(3).flatten(),
-        #             rgba=np.array(trace_color),
-        #         )
-        #         viewer.user_scn.ngeom += 1
+        # Set up rollout traces
+        if show_traces:
+            num_trace_sites = len(planner.task.trace_site_ids)
+            for i in range(
+                num_trace_sites * num_traces * planner.ctrl_steps
+            ):
+                mujoco.mjv_initGeom(
+                    viewer.user_scn.geoms[i],
+                    type=mujoco.mjtGeom.mjGEOM_LINE,
+                    size=np.zeros(3),
+                    pos=np.zeros(3),
+                    mat=np.eye(3).flatten(),
+                    rgba=np.array(trace_color),
+                )
+                viewer.user_scn.ngeom += 1
 
         # Add geometry for the ghost reference
         if reference is not None:
             mujoco.mjv_addGeoms(
                 mj_model, ref_data, vopt, pert, catmask, viewer.user_scn
             )
+
+        sim_step_count = 0
 
         while viewer.is_running():
             start_time = time.time()
@@ -187,25 +203,20 @@ def run_interactive(  # noqa: PLR0912, PLR0915
                 time=mj_data.time,
             )
 
-            # Do a replanning step
-            plan_start = time.time()
-            # policy_params, rollouts = jit_optimize(mjx_data, policy_params)
-            plan_time = time.time() - plan_start
-
-            # # Visualize the rollouts
-            # if show_traces:
-            #     ii = 0
-            #     for k in range(num_trace_sites):
-            #         for i in range(num_traces):
-            #             for j in range(controller.ctrl_steps):
-            #                 mujoco.mjv_connector(
-            #                     viewer.user_scn.geoms[ii],
-            #                     mujoco.mjtGeom.mjGEOM_LINE,
-            #                     trace_width,
-            #                     rollouts.trace_sites[i, j, k],
-            #                     rollouts.trace_sites[i, j + 1, k],
-            #                 )
-            #                 ii += 1
+            # Visualize the rollouts
+            if show_traces:
+                ii = 0
+                for k in range(num_trace_sites):
+                    for i in range(num_traces):
+                        for j in range(planner.ctrl_steps):
+                            mujoco.mjv_connector(
+                                viewer.user_scn.geoms[ii],
+                                mujoco.mjtGeom.mjGEOM_LINE,
+                                trace_width,
+                                rollouts.trace_sites[i, j, k],
+                                rollouts.trace_sites[i, j + 1, k],
+                            )
+                            ii += 1
 
             # Update the ghost reference
             if reference is not None:
@@ -224,26 +235,35 @@ def run_interactive(  # noqa: PLR0912, PLR0915
                     viewer.user_scn,
                 )
 
-            # query the control spline at the sim frequency
-            # (we assume the sim freq is the same as the low-level ctrl freq)
-            sim_dt = mj_model.opt.timestep
-            t_curr = mj_data.time
-
-            tq = jnp.arange(0, sim_steps_per_replan) * sim_dt + t_curr
-            # tk = policy_params.tk
-            # knots = policy_params.mean[None, ...]
-            # us = np.asarray(jit_interp_func(tq, tk, knots))[0]  # (ss, nu)
-
             # simulate the system between spline replanning steps
-            for i in range(sim_steps_per_control):
-                des_vel = jnp.array([0.5, 0, 0])
+            if sim_step_count % sim_steps_per_replan == 0:
+                ## Compute a new MPC solution
+                # Do a replanning step
+                plan_start = time.time()
+                policy_params, rollouts = jit_optimize(mjx_data, policy_params)
+                plan_time = time.time() - plan_start
+                # print(f"HL time to compute: {plan_time:.5f} seconds")
+
+                # Interpolate
+                # query the control spline at the sim frequency
+                # (we assume the sim freq is the same as the low-level ctrl freq)
+                t_curr = mj_data.time
+                tq = jnp.arange(0, control_steps_per_plan) * control_period + t_curr
+                tk = policy_params.tk
+                knots = policy_params.mean[None, ...]
+                u_hl = jit_interp_func(tq, tk, knots)[0]  # (ss, nu)
+                interp_start = sim_step_count
+
+            if sim_step_count % sim_steps_per_control == 0:
+                ## Compute a new control action
                 start_time = time.time()
-                obs = low_level_controller.create_obs(mj_data, des_vel)
-                action = low_level_controller.create_action(obs)
+                action, data = low_level_controller.compute_control(mj_data, u_hl[:, sim_step_count - interp_start], data)
                 end_time = time.time()
-                # print(f"time to obs: {end_time - start_time:.5f} seconds")
+                # print(f"LL time to compute: {end_time - start_time:.5f} seconds")
                 mj_data.ctrl[:] = np.array(action)
-                mujoco.mj_step(mj_model, mj_data)
+
+            mujoco.mj_step(mj_model, mj_data)
+            sim_step_count += 1
 
             viewer.sync()
 

@@ -1,9 +1,11 @@
 import argparse
 
+import jax
 import jax.numpy as jnp
 import mujoco
 import yaml
 
+from hydrax.algs.high_level_ps import PredictiveSamplingHL
 from hydrax.low_level_controllers.g1_controller import G1Controller
 
 # from hydrax.simulation.asynchronous import run_interactive as run_async
@@ -34,7 +36,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define the task (cost and dynamics)
-    task = HumanoidHighLevel()
+    u_min = jnp.array([-1., 0., -1])
+    u_max = jnp.array([1., 0., 1])
+    target_pos = jnp.array([1., 0.])
+    task = HumanoidHighLevel(u_max=u_max, u_min=u_min, target_pos=target_pos)
 
     # Parse the config file
     config_file = args.config_file
@@ -65,17 +70,18 @@ if __name__ == "__main__":
         ang_vel_scale=ang_vel_scale,
     )
 
-    # # Set up the controller
-    # ctrl = PredictiveSamplingHL(
-    #     task,
-    #     controller=rl_controller,
-    #     num_samples=128,
-    #     noise_level=0.3,
-    #     num_randomizations=4,
-    #     plan_horizon=0.6,
-    #     spline_type="zero",
-    #     num_knots=4,
-    # )
+    # Set up the MPC
+    ctrl = PredictiveSamplingHL(
+        task,
+        num_inputs=3,
+        controller=rl_controller,
+        num_samples=128,
+        noise_level=0.3,
+        num_randomizations=4,
+        plan_horizon=1.5, #0.6,
+        spline_type="zero",
+        num_knots=8 #4,
+    )
 
     # Define the model used for simulation (stiffer contact parameters)
     mj_model = task.mj_model
@@ -107,11 +113,11 @@ if __name__ == "__main__":
     # else:
     print("Running deterministic simulation")
     run_interactive(
-        # ctrl,
-        mj_model,
-        mj_data,
-        rl_controller,
+        planner=ctrl,
+        mj_model=mj_model,
+        mj_data=mj_data,
+        low_level_controller=rl_controller,
         hl_frequency=5,
         ll_frequency=50,
-        show_traces=False,
+        show_traces=True,
     )

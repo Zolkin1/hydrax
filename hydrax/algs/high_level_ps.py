@@ -4,14 +4,14 @@ import jax
 import jax.numpy as jnp
 from flax.struct import dataclass
 
-from hydrax.alg_base import SamplingParams, Trajectory
-from hydrax.algs.high_level_control import HighLevelControl, LowLevelController
+from hydrax.alg_base import Trajectory
+from hydrax.algs.high_level_control import HighLevelControl, LowLevelController, HLSamplingParams
 from hydrax.risk import RiskStrategy
 from hydrax.task_base import Task
 
 
 @dataclass
-class PSParams(SamplingParams):
+class HLPSParams(HLSamplingParams):
     """Policy parameters for predictive sampling.
 
     Same as SamplingParams, but with a different name for clarity.
@@ -30,6 +30,7 @@ class PredictiveSamplingHL(HighLevelControl):
         self,
         task: Task,
         controller: LowLevelController,
+        num_inputs: int,
         num_samples: int,
         noise_level: float,
         num_randomizations: int = 1,
@@ -66,18 +67,19 @@ class PredictiveSamplingHL(HighLevelControl):
             num_knots=num_knots,
             iterations=iterations,
             controller=controller,
+            num_inputs=num_inputs,
         )
         self.noise_level = noise_level
         self.num_samples = num_samples
 
     def init_params(
         self, initial_knots: jax.Array = None, seed: int = 0
-    ) -> PSParams:
+    ) -> HLPSParams:
         """Initialize the policy parameters."""
         _params = super().init_params(initial_knots, seed)
-        return PSParams(tk=_params.tk, mean=_params.mean, rng=_params.rng)
+        return HLPSParams(tk=_params.tk, mean=_params.mean, rng=_params.rng, ll_data=_params.ll_data)
 
-    def sample_knots(self, params: PSParams) -> Tuple[jax.Array, PSParams]:
+    def sample_knots(self, params: HLPSParams) -> Tuple[jax.Array, HLPSParams]:
         """Sample a control sequence."""
         rng, sample_rng = jax.random.split(params.rng)
         noise = jax.random.normal(
@@ -85,7 +87,7 @@ class PredictiveSamplingHL(HighLevelControl):
             (
                 self.num_samples,
                 self.num_knots,
-                self.task.model.nu,
+                self.num_inputs,
             ),
         )
         controls = params.mean + self.noise_level * noise
@@ -95,7 +97,7 @@ class PredictiveSamplingHL(HighLevelControl):
 
         return controls, params.replace(rng=rng)
 
-    def update_params(self, params: PSParams, rollouts: Trajectory) -> PSParams:
+    def update_params(self, params: HLPSParams, rollouts: Trajectory) -> HLPSParams:
         """Update the policy parameters by choosing the lowest-cost rollout."""
         costs = jnp.sum(rollouts.costs, axis=1)  # sum over time steps
         best_idx = jnp.argmin(costs)
